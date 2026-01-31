@@ -1,20 +1,16 @@
-name: Playwright Test Automation
+name: Playwright CI
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 jobs:
-  playwright-test:
+  Run_Script:
+    name: Run_Script
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------
-      # 1. Run_Script
-      # --------------------
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -31,21 +27,35 @@ jobs:
       - name: Run Playwright Tests
         run: npx playwright test
 
-      # --------------------
-      # 2. Report
-      # --------------------
-      - name: Upload Playwright Report
+      - name: Upload raw report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
-          retention-days: 7
 
-      # --------------------
-      # 3. Send_Mail
-      # --------------------
-      - name: Send test result email
+  Report:
+    name: Report
+    needs: Run_Script
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+
+      - name: List report files
+        run: ls -R playwright-report
+
+  Send_Mail:
+    name: Send_Mail
+    needs: Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send email notification
         if: always()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -56,18 +66,16 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          subject: "Playwright Test Result - ${{ github.repository }}"
+          subject: "Playwright Test Result - ${{ job.status }}"
           to: yourmail@example.com
           from: Playwright CI <${{ secrets.MAIL_USERNAME }}>
 
           body: |
-            Playwright Test Finished 🚀
+            Playwright CI Finished 🚀
 
             Repository: ${{ github.repository }}
             Branch: ${{ github.ref_name }}
-            Status: ${{ job.status }}
+            Status: ${{ needs.Run_Script.result }}
 
-            View report in GitHub Actions:
+            View report:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          attachments: playwright-report/index.html
