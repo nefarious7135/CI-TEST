@@ -81,7 +81,7 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
 
           subject: "Playwright Test Result - ${{ job.status }}"
-          to: yourmail@example.com
+          to: bigkk2008@hotmail.com
           from: Playwright CI <${{ secrets.MAIL_USERNAME }}>
 
           body: |
