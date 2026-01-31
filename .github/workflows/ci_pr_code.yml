@@ -1,0 +1,298 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: quality
+    outputs:
+      report_artifact: ${{ steps.meta.outputs.report_artifact }}
+      tests_total: ${{ steps.test_summary.outputs.total }}
+      tests_passed: ${{ steps.test_summary.outputs.passed }}
+      tests_failed: ${{ steps.test_summary.outputs.failed }}
+      tests_skipped: ${{ steps.test_summary.outputs.skipped }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set run timestamp
+        id: meta
+        shell: bash
+        run: |
+          TS="$(date -u '+%Y%m%d-%H%M%S')"
+          echo "RUN_TS=$(date -u '+%Y-%m-%d_%H-%M-%S_UTC')" >> $GITHUB_ENV
+          echo "RUN_TS_COMPACT=${TS}" >> $GITHUB_ENV
+          echo "report_artifact=playwright-report-${TS}" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        run: npm run test
+
+      - name: Build HTML summary from results.json
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const input = 'playwright-report/results.json';
+          const outFile = 'playwright-report/summary.html';
+
+          if (!fs.existsSync(input)) {
+            console.log('No results.json found:', input);
+            process.exit(0);
+          }
+
+          const data = JSON.parse(fs.readFileSync(input, 'utf8'));
+          let total = 0, passed = 0, failed = 0, skipped = 0;
+          const failedItems = [];
+
+          function walkSuites(suites) {
+            for (const s of suites || []) {
+              walkSuites(s.suites);
+              for (const spec of s.specs || []) {
+                for (const t of spec.tests || []) {
+                  total++;
+                  const last = t.results?.[t.results.length - 1];
+                  const status = last?.status || t.status;
+                  if (status === 'passed') passed++;
+                  else if (status === 'failed') {
+                    failed++;
+                    failedItems.push({ title: spec.title, file: spec.file || '' });
+                  } else if (status === 'skipped') skipped++;
+                }
+              }
+            }
+          }
+
+          walkSuites(data.suites);
+
+          const esc = (s) =>
+            String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+          const rows = failedItems.slice(0, 50).map(x =>
+            `<tr><td>❌</td><td>${esc(x.title)}</td><td>${esc(x.file)}</td></tr>`
+          ).join('');
+
+          const html = `<!doctype html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width,initial-scale=1" />
+            <title>Playwright Test Summary</title>
+            <style>
+              body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px}
+              .cards{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+              .card{padding:12px 14px;border:1px solid #ddd;border-radius:10px;min-width:160px}
+              table{border-collapse:collapse;width:100%;margin-top:12px}
+              th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+              th{background:#f6f6f6;text-align:left}
+              .muted{color:#666}
+              code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
+            </style>
+          </head>
+          <body>
+            <h1>Playwright Test Summary</h1>
+            <p class="muted">Generated from <code>playwright-report/results.json</code></p>
+
+            <div class="cards">
+              <div class="card"><div>Total</div><b>${total}</b></div>
+              <div class="card"><div>Passed</div><b>${passed}</b></div>
+              <div class="card"><div>Failed</div><b>${failed}</b></div>
+              <div class="card"><div>Skipped</div><b>${skipped}</b></div>
+            </div>
+
+            <h2>Failed tests (top 50)</h2>
+            ${failedItems.length ? `
+            <table>
+              <thead><tr><th></th><th>Test</th><th>File</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>` : `<p>✅ No failed tests</p>`}
+
+            <p class="muted">Open <code>index.html</code> for full report.</p>
+          </body>
+          </html>`;
+
+          fs.writeFileSync(outFile, html);
+          console.log('Wrote:', outFile);
+          NODE
+
+      - name: Summarize test result (outputs)
+        id: test_summary
+        if: always()
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const file = 'playwright-report/results.json';
+
+          let total = 0, passed = 0, failed = 0, skipped = 0;
+
+          if (fs.existsSync(file)) {
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            function walkSuites(suites) {
+              for (const s of suites || []) {
+                walkSuites(s.suites);
+                for (const spec of s.specs || []) {
+                  for (const t of spec.tests || []) {
+                    total++;
+                    const last = t.results?.[t.results.length - 1];
+                    const status = last?.status || t.status;
+                    if (status === 'passed') passed++;
+                    else if (status === 'failed') failed++;
+                    else if (status === 'skipped') skipped++;
+                  }
+                }
+              }
+            }
+            walkSuites(data.suites);
+          }
+
+          process.stdout.write(`total=${total}\npassed=${passed}\nfailed=${failed}\nskipped=${skipped}\n`);
+          NODE
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.report_artifact }}
+          path: playwright-report/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ env.RUN_TS_COMPACT }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Add Summary (Pass/Fail)
+        if: always()
+        run: |
+          echo "## Playwright Smoke Result" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Passed: **${{ steps.test_summary.outputs.passed }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Failed: **${{ steps.test_summary.outputs.failed }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏭️ Skipped: **${{ steps.test_summary.outputs.skipped }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Total: **${{ steps.test_summary.outputs.total }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  publish-report:
+    runs-on: ubuntu-latest
+    needs: smoke
+    if: always() && github.event_name == 'pull_request'
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download Playwright report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.smoke.outputs.report_artifact }}
+          path: report
+
+      - name: Prepare Pages content (per PR)
+        shell: bash
+        run: |
+          PR="${{ github.event.pull_request.number }}"
+
+          rm -rf public
+          mkdir -p "public/pr-${PR}"
+
+          if [ -f "report/index.html" ]; then
+            cp -R report/* "public/pr-${PR}/"
+          else
+            echo "❌ report/index.html not found"
+            exit 1
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Add Pages link to Summary
+        if: always()
+        run: |
+          PR="${{ github.event.pull_request.number }}"
+          echo "## ✅ Web Report (GitHub Pages)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Full Report:** ${{ steps.deployment.outputs.page_url }}pr-${PR}/" >> $GITHUB_STEP_SUMMARY
+
+  notify-line-pr:
+    runs-on: ubuntu-latest
+    needs: [smoke, publish-report]
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - name: Send LINE notification (PR + Pages link)
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_TO: ${{ secrets.LINE_TO }}
+          STATUS: ${{ needs.smoke.result }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          PR: ${{ github.event.pull_request.number }}
+          PAGE_URL: ${{ needs.publish-report.outputs.page_url }}
+          TOTAL: ${{ needs.smoke.outputs.tests_total }}
+          PASSED: ${{ needs.smoke.outputs.tests_passed }}
+          FAILED: ${{ needs.smoke.outputs.tests_failed }}
+          SKIPPED: ${{ needs.smoke.outputs.tests_skipped }}
+        shell: bash
+        run: |
+          set -e
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+
+          cat <<EOF > msg.txt
+          CI: ${STATUS}
+          Tests: ✅ ${PASSED} | ❌ ${FAILED} | ⏭️ ${SKIPPED} | Total ${TOTAL}
+          Repo: ${REPO}
+          PR: #${PR}
+          Run: ${RUN_URL}
+          Pages: ${PAGE_URL}pr-${PR}/
+          EOF
+
+          ESCAPED=$(python3 - <<'PY'
+          import json
+          with open("msg.txt", "r", encoding="utf-8") as f:
+              print(json.dumps(f.read()))
+          PY
+          )
+
+          curl -sS -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${LINE_CHANNEL_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\":\"${LINE_TO}\",\"messages\":[{\"type\":\"text\",\"text\":${ESCAPED}}]}"

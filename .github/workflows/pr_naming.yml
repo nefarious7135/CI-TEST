@@ -1,0 +1,39 @@
+name: PR Naming Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, ready_for_review, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        shell: bash
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "PR title: $PR_TITLE"
+
+          SPRINT_RE='^Sprint_[0-9]+[[:space:]_-]+(feature|fix|chore|test|refactor)[[:space:]_-]*:[[:space:]]+[A-Za-z0-9][A-Za-z0-9 _-]*$'
+          HOTFIX_RE='^Hotfix[[:space:]_-]*:[[:space:]]+[A-Za-z0-9][A-Za-z0-9 _-]*$'
+
+          if [[ "$PR_TITLE" =~ $SPRINT_RE ]]; then
+            echo "✅ PR title OK (Sprint pattern)"
+          elif [[ "$PR_TITLE" =~ $HOTFIX_RE ]]; then
+            echo "✅ PR title OK (Hotfix pattern)"
+          else
+            echo "❌ Invalid PR title: $PR_TITLE"
+            echo "::error::PR title must match one of these formats:"
+            echo "::error::  Sprint_<N> <type>: <title>"
+            echo "::error::  Hotfix: <title>"
+            echo "::error::Examples:"
+            echo "::error::  Sprint_1 feature: Add login page"
+            echo "::error::  Sprint_2-fix: Resolve timeout"
+            echo "::error::  Hotfix: Urgent prod patch"
+            exit 1
+          fi
