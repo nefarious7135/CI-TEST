@@ -67,10 +67,6 @@ jobs:
           echo "⏱ **Duration:** 3.2s" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          echo "### ✅ Passed Tests" >> $GITHUB_STEP_SUMMARY
-          jq -r '.suites[].specs[].tests[]
-            | select(.results[-1].status=="passed")
-            | "- " + .title' $REPORT >> $GITHUB_STEP_SUMMARY
 
   Send_Mail:
     name: Send_Mail
@@ -98,7 +94,8 @@ jobs:
 
             Repository: ${{ github.repository }}
             Branch: ${{ github.ref_name }}
-            Status: ${{ needs.Run_Script.result }}
+            Status: ${{ job.status }}
+
 
             View report:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
