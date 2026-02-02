@@ -52,16 +52,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Status | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| ✅ Passed | 2 |" >> $GITHUB_STEP_SUMMARY
-          echo "| ❌ Failed | 0 |" >> $GITHUB_STEP_SUMMARY
-          echo "| ⏭ Skipped | 0 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📊 Total | 2 |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Passed | ${PASSED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ Failed | ${FAILED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⏭ Skipped | ${SKIPPED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📊 Total | ${TOTAL} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "⏱ **Duration:** 3.2s" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### ✅ Passed Tests" >> $GITHUB_STEP_SUMMARY
-          echo "- CPC_API_1_051 Get Product Detail" >> $GITHUB_STEP_SUMMARY
-          echo "- CPC_API_1_052 Get Product Detail by Criteria" >> $GITHUB_STEP_SUMMARY
 
   Send_Mail:
     name: Send_Mail
