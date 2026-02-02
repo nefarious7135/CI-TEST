@@ -64,7 +64,6 @@ jobs:
           echo "| ⏭ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
           echo "| 📊 Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⏱ **Duration:** 3.2s" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
 
